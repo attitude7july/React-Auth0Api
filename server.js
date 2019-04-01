@@ -1,21 +1,27 @@
 var express = require('express')
 require('dotenv').config()
 var port = process.env.PORT || 3002
-var jwt = require('express-jwt')
-var jwks = require('jwks-rsa')
+var jwt = require('express-jwt') // validate JWT and set req.server
+var jwks = require('jwks-rsa') // retrieve RSA key from a JSON web key set (JWKS) endpoint
+var checkScopes = require('express-jwt-authz') // validates JWT scopes
 
 var jwtCheck = jwt({
+  // dynamically provide a signing key based on the kind in the header
+  // and the signing key provided by the JWKS endpoint
   secret: jwks.expressJwtSecret({
-    cache: true,
+    cache: true, // cache the signing key
     rateLimit: true,
-    jwksRequestsPerMinute: 5,
+    jwksRequestsPerMinute: 5, // prevent attackers from requesting 5 times per minute
     jwksUri: `https://${
       process.env.REACT_APP_AUTH0_DOMAIN
     }/.well-known/jwks.json`,
     strictSsl: false
   }),
+  // validate audience and issuer
   aud: `${process.env.REACT_APP_AUTH0_AUDIENCE}`,
   issuer: `https://${process.env.REACT_APP_AUTH0_DOMAIN}/`,
+
+  // this must match the algorithm selected in the Auth0 dashboard under your app's advanced setting under the OAth tab
   algorithms: ['RS256']
 })
 
@@ -23,9 +29,15 @@ var app = express()
 app.get('/public', function (req, res) {
   res.json({ message: 'hello web api' })
 })
-app.use(jwtCheck)
-app.get('/category', function (req, res) {
-  res.json({ message: 'Secured Resource' })
+app.get('/category',jwtCheck, checkScopes(["read:categories"]), function (req, res) {
+  res.json({
+    categories: [
+      { id: 1, title: 'category a' },
+      { id: 2, title: 'category b' },
+      { id: 3, title: 'category c' },
+      { id: 4, title: 'category d' }
+    ]
+  })
 })
 
 app.listen(port)
